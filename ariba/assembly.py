@@ -32,6 +32,7 @@ class Assembly:
       clean=True,
       spades_mode="wgs",
       spades_options=None,
+      plugin_asm_options=None,
       threads=1
     ):
         self.reads1 = os.path.abspath(reads1)
@@ -56,6 +57,7 @@ class Assembly:
         self.clean = clean
         self.spades_mode = spades_mode
         self.spades_options = spades_options
+        self.plugin_asm_options = plugin_asm_options
         self.threads = threads
 
         if extern_progs is None:
@@ -170,12 +172,11 @@ class Assembly:
 
                 ## fermilight module generates contig names that look like `cluster_1.l15.c17.ctg.1` where 'cluster_1'==self.contig_name_prefix
                 ## the whole structure of the contig name is expected in several places downstream where it is parsed into individual components.
-                ## For example, it is parsed into to l and c parts in ref_seq_chooser (although the parts are not actually used).
+                ## For example, it is parsed into to l and c parts in ref_seq_chooser, by splitting at '.' symbol.
                 ## This is the code from fermilight module that generates the contig ID string:
                 ## ofs << ">" << namePrefix << ".l" << overlap << ".c" << minCount << ".ctg." << i + 1 << '\n'
                 ##
-                ## We generate the same contig name structure here using dummy values for overlap and minCount, in order
-                ## to avoid distrupting the downstream code.
+                ## We need to generate the same contig name structure here using dummy values for overlap and minCount.
                 ## Note that the fermilight module generates multiple versions of the assembly on a grid of l and c values,
                 ## and ref_seq_chooser then picks a single "best" (l,c) version based on coverage/identity of the nucmer
                 ## alignment to the reference. Spades generates a single version of the assembly, so ref_seq_chooser
@@ -200,6 +201,47 @@ class Assembly:
                 shutil.rmtree(self.assembler_dir,ignore_errors=True)
         finally:
             os.chdir(cwd)
+
+    def _assemble_with_plugin(self):
+        cwd = os.getcwd()
+        self.assembled_ok = False
+        try:
+            try:
+                os.chdir(self.working_dir)
+            except:
+                raise Error('Error chdir ' + self.working_dir)
+            plugin_asm_options = self.plugin_asm_options
+            if plugin_asm_options is not None:
+                plugin_asm_options = shlex.split(plugin_asm_options)
+            else:
+                raise Error("In case of plugin assembler options must at least contain the command to run")
+            plugin_asm_out_seq = os.path.join(self.working_dir, "ariba_asm_contigs.fasta")
+            plugin_asm_log = os.path.join(self.assembler_dir, 'ariba_asm.log')
+            asm_cmd = plugin_asm_options + ["--threads", str(self.threads), "--reads1", self.reads1, "--reads2", self.reads2,
+                                            "--workdir", self.assembler_dir, "--contigs", plugin_asm_out_seq,
+                                            "--log", plugin_asm_log, "--prefix", self.contig_name_prefix]
+            asm_ok,err = common.syscall(asm_cmd, verbose=True, verbose_filehandle=self.log_fh, shell=False, allow_fail=True)
+            if not asm_ok:
+                print('Assembly finished with errors. These are the errors:', file=self.log_fh)
+                print(err, file=self.log_fh)
+                print('\nEnd of plugin_asm errors\n', file=self.log_fh)
+            else:
+                if os.path.exists(plugin_asm_log):
+                    with open(plugin_asm_log) as f:
+                        print('\n______________ plugin_asm log ___________________\n', file=self.log_fh)
+                        for line in f:
+                            print(line.rstrip(), file=self.log_fh)
+                        print('\n______________ End of plugin_asm log _________________\n', file=self.log_fh)
+
+                if os.path.exists(plugin_asm_out_seq):
+                    shutil.copy(plugin_asm_out_seq,self.all_assembly_contigs_fa)
+                    self.assembled_ok = True
+            if self.clean:
+                print('Deleting assembly directory', self.assembler_dir, file=self.log_fh)
+                shutil.rmtree(self.assembler_dir,ignore_errors=True)
+        finally:
+            os.chdir(cwd)
+
 
 
     @staticmethod
@@ -259,6 +301,9 @@ class Assembly:
             self._assemble_with_fermilite()
         elif self.assembler == "spades":
             self._assemble_with_spades()
+        elif self.assembler == "plugin":
+            self._assemble_with_plugin()
+
         print('Finished running assemblies', flush=True, file=self.log_fh)
         self.sequences = {}
 

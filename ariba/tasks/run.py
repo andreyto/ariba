@@ -60,7 +60,8 @@ def run(options):
           clean=(not options.noclean),
           tmp_dir=options.tmp_dir,
           spades_mode=options.spades_mode,
-          spades_options=options.spades_options
+          spades_options=options.spades_options,
+          plugin_asm_options=options.plugin_asm_options
         )
     c.run()
 

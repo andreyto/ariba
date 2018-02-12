@@ -45,6 +45,7 @@ class Cluster:
       max_gene_nt_extend=30,
       spades_mode="rna", #["rna","wgs"]
       spades_options=None,
+      plugin_asm_options=None,
       clean=True,
       extern_progs=None,
       random_seed=42,
@@ -75,6 +76,7 @@ class Cluster:
         self.reads_insert = reads_insert
         self.spades_mode = spades_mode
         self.spades_options = spades_options
+        self.plugin_asm_option = plugin_asm_options
 
         self.reads_for_assembly1 = os.path.join(self.root_dir, 'reads_for_assembly_1.fq')
         self.reads_for_assembly2 = os.path.join(self.root_dir, 'reads_for_assembly_2.fq')
@@ -360,6 +362,7 @@ class Cluster:
               clean=self.clean,
               spades_mode=self.spades_mode,
               spades_options=self.spades_options,
+              plugin_asm_options=self.plugin_asm_option,
               threads=self.threads
             )
 

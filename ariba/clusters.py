@@ -64,6 +64,7 @@ class Clusters:
       assembler='fermilite',
       spades_mode='rna',
       spades_options=None,
+      plugin_asm_options=None,
       max_insert=1000,
       min_scaff_depth=10,
       nucmer_min_id=90,
@@ -97,6 +98,7 @@ class Clusters:
         self.assembly_coverage = assembly_coverage
         self.spades_mode = spades_mode
         self.spades_options = spades_options
+        self.plugin_asm_options = plugin_asm_options
 
         self.cdhit_files_prefix = os.path.join(self.refdata_dir, 'cdhit')
         self.cdhit_cluster_representatives_fa = self.cdhit_files_prefix + '.cluster_representatives.fa'
@@ -440,6 +442,7 @@ class Clusters:
                 max_gene_nt_extend=self.max_gene_nt_extend,
                 spades_mode=self.spades_mode,
                 spades_options=self.spades_options,
+                plugin_asm_options=self.plugin_asm_options,
                 clean=self.clean,
                 extern_progs=self.extern_progs,
                 threads_total=self.threads

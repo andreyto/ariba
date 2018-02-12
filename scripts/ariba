@@ -222,7 +222,7 @@ nucmer_group.add_argument('--nucmer_min_len', type=int, help='Minimum alignment 
 nucmer_group.add_argument('--nucmer_breaklen', type=int, help='Value to use for -breaklen when running nucmer [%(default)s]', default=200, metavar='INT')
 
 assembly_group = subparser_run.add_argument_group('Assembly options')
-assembly_group.add_argument('--assembler', help='Assembler to use', choices=['fermilite','spades'], default='fermilite')
+assembly_group.add_argument('--assembler', help='Assembler to use. If `plugin`, then `--plugin_asm_options` should be provided as well.', choices=['fermilite','spades','plugin'], default='fermilite')
 assembly_group.add_argument('--assembly_cov', type=int, help='Target read coverage when sampling reads for assembly [%(default)s]', default=50, metavar='INT')
 assembly_group.add_argument('--min_scaff_depth', type=int, help='Minimum number of read pairs needed as evidence for scaffold link between two contigs [%(default)s]', default=10, metavar='INT')
 assembly_group.add_argument('--spades_mode', help='If using Spades assembler, either use default WGS mode, Single Cell mode (`spades.py --sc`) or RNA mode (`spades.py --rna`). '
@@ -230,6 +230,23 @@ assembly_group.add_argument('--spades_mode', help='If using Spades assembler, ei
                                                   'Set `--assembly_cov` to some high value if using SC or RNA mode', choices=['wgs','sc','rna'], default='wgs')
 assembly_group.add_argument('--spades_options', help='Extra options to pass to Spades assembler. Sensible default options will be picked based on `--spades_mode` argument. '
                                                      'Anything set here will replace the defaults completely')
+assembly_group.add_argument('--plugin_asm_options', help='Options to use if the assembler choice is `plugin`. A quoted string that should start with the executable for the assembler. '
+                                                     'The following additional arguments will be appended to the command line when Ariba is calling the assembler: '
+                                                      '--threads <n> --reads1 <file> --reads2 <file> --workdir <dir> --contigs <file> --log <file> --prefix <str>. '
+                                                      'The assembler should understand these command-line arguments. '
+                                                      'The assembler should create the final sequences at a file path passed in `--out-contigs` argument. '
+                                                      'Contigs should be named in a certain way (see below), starting with the --prefix argument. '
+                                                      'The assembler is allowed to generate several alternative assemblies. '
+                                                      'Optionally, it can create the log file  at a file path passed in `--log` argument. '
+                                                      'Example of a call through this mechanism: '
+                                                      '`--plugin_asm_options "my_asm_wrapper_scipt.py --opt1 value1 --opt2 value2"` would result in a call '
+                                                      '`my_asm_wrapper_scipt.py --opt1 value1 --opt2 value2 --threads <ariba_defines> --reads1 <ariba_provides> --reads2 <ariba_provides> '
+                                                      '--workdir <ariba_defines-assembler_creates> --contigs <ariba_defines-assembler_creates> --log <ariba_defines-assembler_maybe_creates> '
+                                                      '--prefix <ariba_defines>`. '
+                                                      'Here, --prefix may be a string like "cluster_1", and the assembler should generate FASTA header lines for the output contigs that look like '
+                                                      '"><prefix>.<key1>.<key2>.ctg.<i>" where the shown dot separators are mandatory, <key1> and <key2> together identify alternative assemblies, '
+                                                      'and <i> numbers contigs within a given alternative assembly. Ariba code will pick the best among the proposed alternative assemblies. '
+                                                      'In case of a fatal error, the plugin executable should finish with a non-zero exit code. ')
 
 other_run_group = subparser_run.add_argument_group('Other options')
 other_run_group.add_argument('--threads', type=int, help='Experimental. Number of threads. Will run clusters in parallel, but not minimap (yet) [%(default)s]', default=1, metavar='INT')
