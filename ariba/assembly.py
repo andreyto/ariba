@@ -246,7 +246,8 @@ class Assembly:
 
     @staticmethod
     def _fix_contig_orientation(contigs_fa, ref_fa, outfile, min_id=90, min_length=20, breaklen=200):
-        '''Changes orientation of each contig to match the reference, when possible.
+        '''Changes orientation of each contig to match the reference.
+           Picks the orientation that has the max sum of nucmer hit lengths on the contig.
            Returns a set of names of contigs that had hits in both orientations to the reference'''
         if not os.path.exists(contigs_fa):
             raise Error('Cannot fix orientation of assembly contigs because file not found: ' + contigs_fa)
@@ -262,27 +263,27 @@ class Assembly:
             maxmatch=True,
         ).run()
 
-        to_revcomp = set()
-        not_revcomp = set()
+        to_revcomp = {}
+        not_revcomp = {}
         file_reader = pymummer.coords_file.reader(tmp_coords)
         for hit in file_reader:
+            hit_len = hit.hit_length_qry
             if hit.on_same_strand():
-                not_revcomp.add(hit.qry_name)
+                not_revcomp[hit.qry_name] = hit_len + not_revcomp.get(hit.qry_name,0)
             else:
-                to_revcomp.add(hit.qry_name)
+                to_revcomp[hit.qry_name] = hit_len + to_revcomp.get(hit.qry_name,0)
 
         os.unlink(tmp_coords)
-        in_both = to_revcomp.intersection(not_revcomp)
 
         f = pyfastaq.utils.open_file_write(outfile)
         seq_reader = pyfastaq.sequences.file_reader(contigs_fa)
         for seq in seq_reader:
-            if seq.id in to_revcomp and seq.id not in in_both:
+            if to_revcomp.get(seq.id,0) > not_revcomp.get(seq.id,0):
                 seq.revcomp()
             print(seq, file=f)
         pyfastaq.utils.close(f)
 
-        return in_both
+        return set(to_revcomp) & set(not_revcomp)
 
 
     @staticmethod
