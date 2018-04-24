@@ -459,10 +459,34 @@ class Clusters:
         # inside multiprocessing cleanup, and only a harmless traceback is printed,
         # but it looks very spooky to the user and causes confusion. We use
         # instead shared proxies from the Manager. Those do not rely on shared
-        # memory, and thus bypass the NFS issues. The counter is accesses infrequently
+        # memory, and thus bypass the NFS issues. The counter is accessed infrequently
         # relative to computations, so the performance does not suffer.
         # default authkey in the manager will be some generated random-looking string
-        manager = multiprocessing.Manager()
+        #
+        # The tempdir manipulation below tries to work around the following exceptions:
+        #     self._socket.bind(address)
+        # OSError: AF_UNIX path too long
+        #
+        # The exception is raised when the multiprocessing.Manager tries to create a socket file,
+        # and the current temp dir path is longer than about 108 bytes (this is a socket path limit on Linux)
+        # We try pointing temp file creation to /tmp temporarily when this happens.
+        manager = None
+        try:
+            manager = multiprocessing.Manager()
+        ## EOFError is what this process would see
+        except (EOFError,OSError):
+            pass
+        if manager is None:
+            saved_tempdir = getattr(tempfile,"tempdir",None)
+            short_tmpdir = "/tmp"  ## This should always be available and writable per FHS, and our socket file is tiny
+            if os.path.isdir(short_tmpdir):
+                try:
+                    tempfile.tempdir = short_tmpdir
+                    manager = multiprocessing.Manager()
+                finally:
+                    tempfile.tempdir = saved_tempdir
+        if manager is None:
+            raise
         remaining_clusters = manager.Value('l',len(cluster_list))
         # manager.Value does not provide access to the internal RLock that we need for
         # implementing atomic -=, so we need to carry around a separate RLock object.
