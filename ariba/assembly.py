@@ -143,8 +143,14 @@ class Assembly:
                 spades_out_seq_base = "contigs.fasta"
             else:
                 raise ValueError("Unknown spades_mode value: {}".format(self.spades_mode))
-            asm_cmd = [spades_exe, "-t", str(self.threads), "--pe1-1", self.reads1, "--pe1-2", self.reads2, "-o", self.assembler_dir] + \
+            ## Spades non-deterministically reverse-complements low coverage contigs
+            ## (~1x) once out of about 200 assemblies with more than one thread (even when
+            ## the thread number is fixed at a single value).
+            ## It also does not use multiple threads efficiently for our tiny "genomes"
+            ## that are target genes. We run it single-threaded.
+            asm_cmd = [spades_exe, "-t", "1", "--pe1-1", self.reads1, "--pe1-2", self.reads2, "-o", self.assembler_dir] + \
                 spades_options
+
             asm_ok,err = common.syscall(asm_cmd, verbose=True, verbose_filehandle=self.log_fh, shell=False, allow_fail=True)
             if not asm_ok:
                 print('Assembly finished with errors. These are the errors:', file=self.log_fh)
