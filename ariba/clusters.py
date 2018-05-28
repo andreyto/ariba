@@ -477,6 +477,7 @@ class Clusters:
         except (EOFError,OSError):
             pass
         if manager is None:
+            print("Unable to initialize multiprocessing.Manager at default TMP dir, trying /tmp")
             saved_tempdir = getattr(tempfile,"tempdir",None)
             short_tmpdir = "/tmp"  ## This should always be available and writable per FHS, and our socket file is tiny
             if os.path.isdir(short_tmpdir):
