@@ -76,6 +76,7 @@ class Clusters:
       max_gene_nt_extend=30,
       clean=True,
       tmp_dir=None,
+      serial=False
     ):
         self.refdata_dir = os.path.abspath(refdata_dir)
         self.refdata, self.cluster_ids = self._load_reference_data_from_dir(refdata_dir)
@@ -114,6 +115,7 @@ class Clusters:
         self.catted_assemblies_fasta = os.path.join(self.outdir, 'assemblies.fa.gz')
         self.seqmap = "seq_map.tsv" # maps records from the report to *.fa.gz entries
         self.threads = threads
+        self.serial = serial # if True, iterate through clusters serially. Each cluster can still use multiple threads
         self.verbose = verbose
 
         self.max_insert = max_insert
@@ -497,7 +499,7 @@ class Clusters:
         # implementing atomic -=, so we need to carry around a separate RLock object.
         remaining_clusters_lock = manager.RLock()
         try:
-            if self.threads > 1:
+            if not self.serial and self.threads > 1:
                 self.pool = multiprocessing.Pool(self.threads)
                 cluster_list = self.pool.starmap(_run_cluster, zip(cluster_list, itertools.repeat(self.verbose), itertools.repeat(self.clean), itertools.repeat(self.fails_dir),
                                                                    itertools.repeat(remaining_clusters),itertools.repeat(remaining_clusters_lock)))

@@ -49,6 +49,7 @@ def run(options):
           assembly_coverage=options.assembly_cov,
           assembler=options.assembler,
           threads=options.threads,
+          serial=options.serial,
           verbose=options.verbose,
           min_scaff_depth=options.min_scaff_depth,
           nucmer_min_id=options.nucmer_min_id,
