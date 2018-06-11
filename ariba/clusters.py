@@ -7,6 +7,7 @@ import pickle
 import itertools
 import sys
 import shutil
+import csv
 import multiprocessing
 import pyfastaq
 import minimap_ariba
@@ -111,6 +112,7 @@ class Clusters:
         self.catted_assembled_seqs_fasta = os.path.join(self.outdir, 'assembled_seqs.fa.gz')
         self.catted_genes_matching_refs_fasta = os.path.join(self.outdir, 'assembled_genes.fa.gz')
         self.catted_assemblies_fasta = os.path.join(self.outdir, 'assemblies.fa.gz')
+        self.seqmap = "seq_map.tsv" # maps records from the report to *.fa.gz entries
         self.threads = threads
         self.verbose = verbose
 
@@ -169,7 +171,8 @@ class Clusters:
         if self.verbose:
             print('Temporary directory:', self.tmp_dir)
 
-        for i in [x for x in dir(signal) if x.startswith("SIG") and x not in {'SIGCHLD', 'SIGCLD'}]:
+        ## SIGPIPE happens when a bash pipe such as pigz | bbmap completes normally. It is harmless.
+        for i in [x for x in dir(signal) if x.startswith("SIG") and x not in {'SIGCHLD', 'SIGCLD', 'SIGPIPE'}]:
             try:
                 signum = getattr(signal, i)
                 signal.signal(signum, self._receive_signal)
@@ -477,17 +480,18 @@ class Clusters:
         except (EOFError,OSError):
             pass
         if manager is None:
-            print("Unable to initialize multiprocessing.Manager at default TMP dir, trying /tmp")
+            print("Unable to initialize multiprocessing.Manager with socket at default TMP dir, trying /tmp")
             saved_tempdir = getattr(tempfile,"tempdir",None)
             short_tmpdir = "/tmp"  ## This should always be available and writable per FHS, and our socket file is tiny
             if os.path.isdir(short_tmpdir):
                 try:
                     tempfile.tempdir = short_tmpdir
                     manager = multiprocessing.Manager()
+                    print("Initialized multiprocessing.Manager with socket at /tmp")
                 finally:
                     tempfile.tempdir = saved_tempdir
         if manager is None:
-            raise
+            raise OSError("All attempts to initialize multiprocessing.Manager have failed.")
         remaining_clusters = manager.Value('l',len(cluster_list))
         # manager.Value does not provide access to the internal RLock that we need for
         # implementing atomic -=, so we need to carry around a separate RLock object.
@@ -537,7 +541,7 @@ class Clusters:
         pyfastaq.utils.close(f)
 
 
-    def _write_catted_assemblies_fasta(self, outfile):
+    def _write_catted_assemblies_fasta(self, outfile, outseqmap):
         f = pyfastaq.utils.open_file_write(outfile)
 
         for gene in sorted(self.clusters):
@@ -547,12 +551,16 @@ class Clusters:
                 continue
 
             for seq_name in sorted(seq_dict):
-                print(seq_dict[seq_name], file=f)
+                seq = seq_dict[seq_name]
+                print(seq, file=f)
+                outseqmap.writerow(dict(seq_id=seq.id,
+                    seq_type="asm",
+                    cluster=gene))
 
         pyfastaq.utils.close(f)
 
 
-    def _write_catted_assembled_seqs_fasta(self, outfile):
+    def _write_catted_assembled_seqs_fasta(self, outfile, outseqmap):
         f = pyfastaq.utils.open_file_write(outfile)
 
         for gene in sorted(self.clusters):
@@ -560,14 +568,19 @@ class Clusters:
                 seq_dict = self.clusters[gene].assembly_compare.assembled_reference_sequences
             except:
                 continue
-
+            ref_name = self.clusters[gene].assembly_compare.ref_sequence.id
             for seq_name in sorted(seq_dict):
-                print(seq_dict[seq_name], file=f)
+                seq = seq_dict[seq_name]
+                print(seq, file=f)
+                outseqmap.writerow(dict(seq_id=seq.id,
+                    ref_name=ref_name,
+                    seq_type="match",
+                    cluster=gene))
 
         pyfastaq.utils.close(f)
 
 
-    def _write_catted_genes_matching_refs_fasta(self, outfile):
+    def _write_catted_genes_matching_refs_fasta(self, outfile, outseqmap):
         f = pyfastaq.utils.open_file_write(outfile)
 
         for gene in sorted(self.clusters):
@@ -579,6 +592,11 @@ class Clusters:
                     str(self.clusters[gene].assembly_compare.gene_end_bases_added)
                 ])
                 print(seq, file=f)
+                ref_name = self.clusters[gene].assembly_compare.ref_sequence.id
+                outseqmap.writerow(dict(seq_id=seq.id,
+                    ref_name=ref_name,
+                    seq_type="gene",
+                    cluster=gene))
 
         pyfastaq.utils.close(f)
 
@@ -677,9 +695,13 @@ class Clusters:
                 print()
                 print('{:_^79}'.format(' Writing fasta of assembled sequences '), flush=True)
                 print(self.catted_assembled_seqs_fasta, 'and', self.catted_genes_matching_refs_fasta, flush=True)
-            self._write_catted_assembled_seqs_fasta(self.catted_assembled_seqs_fasta)
-            self._write_catted_genes_matching_refs_fasta(self.catted_genes_matching_refs_fasta)
-            self._write_catted_assemblies_fasta(self.catted_assemblies_fasta)
+            
+            with open(self.seqmap,"w",newline="") as outsmfile:
+                outseqmap = csv.DictWriter(outsmfile, fieldnames=["ref_name","cluster","seq_type","seq_id"], dialect='excel-tab')
+                outseqmap.writeheader()
+                self._write_catted_assembled_seqs_fasta(self.catted_assembled_seqs_fasta, outseqmap)
+                self._write_catted_genes_matching_refs_fasta(self.catted_genes_matching_refs_fasta, outseqmap)
+                self._write_catted_assemblies_fasta(self.catted_assemblies_fasta, outseqmap)
 
             if self.log_files is not None:
                 clusters_log_file = os.path.join(self.outdir, 'log.clusters.gz')
