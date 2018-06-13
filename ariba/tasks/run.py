@@ -47,6 +47,7 @@ def run(options):
           extern_progs,
           version_report_lines=version_report_lines,
           assembly_coverage=options.assembly_cov,
+          assembly_coverage_min=options.assembly_cov_min,
           assembler=options.assembler,
           threads=options.threads,
           serial=options.serial,

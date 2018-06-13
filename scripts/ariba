@@ -224,6 +224,7 @@ nucmer_group.add_argument('--nucmer_breaklen', type=int, help='Value to use for 
 assembly_group = subparser_run.add_argument_group('Assembly options')
 assembly_group.add_argument('--assembler', help='Assembler to use. If `plugin`, then `--plugin_asm_options` should be provided as well.', choices=['fermilite','spades','plugin'], default='fermilite')
 assembly_group.add_argument('--assembly_cov', type=int, help='Target read coverage when sampling reads for assembly [%(default)s]', default=50, metavar='INT')
+assembly_group.add_argument('--assembly_cov_min', type=int, help='Minimum estimated read coverage to try assembly for a given cluster [%(default)s]', default=0, metavar='INT')
 assembly_group.add_argument('--min_scaff_depth', type=int, help='Minimum number of read pairs needed as evidence for scaffold link between two contigs [%(default)s]', default=10, metavar='INT')
 assembly_group.add_argument('--spades_mode', help='If using Spades assembler, either use default WGS mode, Single Cell mode (`spades.py --sc`) or RNA mode (`spades.py --rna`). '
                                                   'Use SC or RNA mode if your input is from a viral sequencing with very uneven and deep coverage. '

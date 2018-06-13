@@ -60,6 +60,7 @@ class Clusters:
       version_report_lines=None,
       assembly_kmer=21,
       assembly_coverage=100,
+      assembly_coverage_min=0,
       threads=1,
       verbose=False,
       assembler='fermilite',
@@ -98,6 +99,7 @@ class Clusters:
         self.assembler = assembler
         self.assembly_kmer = assembly_kmer
         self.assembly_coverage = assembly_coverage
+        self.assembly_coverage_min = assembly_coverage_min        
         self.spades_mode = spades_mode
         self.spades_options = spades_options
         self.plugin_asm_options = plugin_asm_options
@@ -431,6 +433,7 @@ class Clusters:
                 reference_names=self.cluster_ids[cluster_name],
                 logfile=self.log_files[-1],
                 assembly_coverage=self.assembly_coverage,
+                assembly_coverage_min=self.assembly_coverage_min,
                 assembly_kmer=self.assembly_kmer,
                 assembler=self.assembler,
                 max_insert=self.insert_proper_pair_max,
@@ -441,7 +444,10 @@ class Clusters:
                 reads_insert=self.insert_size,
                 sspace_k=self.min_scaff_depth,
                 sspace_sd=self.insert_sspace_sd,
-                threads=1, # initially set to 1, then will adaptively self-modify while running
+                # initially set to total threads for serial mode; 
+                # will immediately adaptively self-modify in the run() method 
+                # in non-serial mode
+                threads=self.threads, 
                 assembled_threshold=self.assembled_threshold,
                 unique_threshold=self.unique_threshold,
                 max_gene_nt_extend=self.max_gene_nt_extend,
@@ -452,71 +458,78 @@ class Clusters:
                 extern_progs=self.extern_progs,
                 threads_total=self.threads
             ))
-        # Here is why we use proxy objects from a Manager process below
-        # instead of simple shared multiprocessing.Value counter:
-        # Shared memory objects in multiprocessing use tempfile module to
-        # create temporary directory, then create temporary file inside it,
-        # memmap the file and unlink it. If TMPDIR envar points to a NFS
-        # mount, the final cleanup handler from multiprocessing will often
-        # return an exception due to a stale NFS file (.nfsxxxx) from a shutil.rmtree
-        # call. See help on tempfile.gettempdir() for how the default location of
-        # temporary files is selected. The exception is caught in except clause
-        # inside multiprocessing cleanup, and only a harmless traceback is printed,
-        # but it looks very spooky to the user and causes confusion. We use
-        # instead shared proxies from the Manager. Those do not rely on shared
-        # memory, and thus bypass the NFS issues. The counter is accessed infrequently
-        # relative to computations, so the performance does not suffer.
-        # default authkey in the manager will be some generated random-looking string
-        #
-        # The tempdir manipulation below tries to work around the following exceptions:
-        #     self._socket.bind(address)
-        # OSError: AF_UNIX path too long
-        #
-        # The exception is raised when the multiprocessing.Manager tries to create a socket file,
-        # and the current temp dir path is longer than about 108 bytes (this is a socket path limit on Linux)
-        # We try pointing temp file creation to /tmp temporarily when this happens.
-        manager = None
-        try:
-            manager = multiprocessing.Manager()
-        ## EOFError is what this process would see
-        except (EOFError,OSError):
-            pass
-        if manager is None:
-            print("Unable to initialize multiprocessing.Manager with socket at default TMP dir, trying /tmp")
-            saved_tempdir = getattr(tempfile,"tempdir",None)
-            short_tmpdir = "/tmp"  ## This should always be available and writable per FHS, and our socket file is tiny
-            if os.path.isdir(short_tmpdir):
-                try:
-                    tempfile.tempdir = short_tmpdir
-                    manager = multiprocessing.Manager()
-                    print("Initialized multiprocessing.Manager with socket at /tmp")
-                finally:
-                    tempfile.tempdir = saved_tempdir
-        if manager is None:
-            raise OSError("All attempts to initialize multiprocessing.Manager have failed.")
-        remaining_clusters = manager.Value('l',len(cluster_list))
-        # manager.Value does not provide access to the internal RLock that we need for
-        # implementing atomic -=, so we need to carry around a separate RLock object.
-        remaining_clusters_lock = manager.RLock()
         try:
             if not self.serial and self.threads > 1:
-                self.pool = multiprocessing.Pool(self.threads)
-                cluster_list = self.pool.starmap(_run_cluster, zip(cluster_list, itertools.repeat(self.verbose), itertools.repeat(self.clean), itertools.repeat(self.fails_dir),
-                                                                   itertools.repeat(remaining_clusters),itertools.repeat(remaining_clusters_lock)))
-                # harvest the pool as soon as we no longer need it
-                self.pool.close()
-                self.pool.join()
+                # Here is why we use proxy objects from a Manager process below
+                # instead of simple shared multiprocessing.Value counter:
+                # Shared memory objects in multiprocessing use tempfile module to
+                # create temporary directory, then create temporary file inside it,
+                # memmap the file and unlink it. If TMPDIR envar points to a NFS
+                # mount, the final cleanup handler from multiprocessing will often
+                # return an exception due to a stale NFS file (.nfsxxxx) from a shutil.rmtree
+                # call. See help on tempfile.gettempdir() for how the default location of
+                # temporary files is selected. The exception is caught in except clause
+                # inside multiprocessing cleanup, and only a harmless traceback is printed,
+                # but it looks very spooky to the user and causes confusion. We use
+                # instead shared proxies from the Manager. Those do not rely on shared
+                # memory, and thus bypass the NFS issues. The counter is accessed infrequently
+                # relative to computations, so the performance does not suffer.
+                # default authkey in the manager will be some generated random-looking string
+                #
+                # The tempdir manipulation below tries to work around the following exceptions:
+                #     self._socket.bind(address)
+                # OSError: AF_UNIX path too long
+                #
+                # The exception is raised when the multiprocessing.Manager tries to create a socket file,
+                # and the current temp dir path is longer than about 108 bytes (this is a socket path limit on Linux)
+                # We try pointing temp file creation to /tmp temporarily when this happens.
+                manager = None
+                try:
+                    manager = multiprocessing.Manager()
+                ## EOFError is what this process would see
+                except (EOFError,OSError):
+                    pass
+                if manager is None:
+                    print("Unable to initialize multiprocessing.Manager with socket at default TMP dir, trying /tmp")
+                    saved_tempdir = getattr(tempfile,"tempdir",None)
+                    short_tmpdir = "/tmp"  ## This should always be available and writable per FHS, and our socket file is tiny
+                    if os.path.isdir(short_tmpdir):
+                        try:
+                            tempfile.tempdir = short_tmpdir
+                            manager = multiprocessing.Manager()
+                            print("Initialized multiprocessing.Manager with socket at /tmp")
+                        finally:
+                            tempfile.tempdir = saved_tempdir
+                if manager is None:
+                    raise OSError("All attempts to initialize multiprocessing.Manager have failed.")
+                remaining_clusters = manager.Value('l',len(cluster_list))
+                # manager.Value does not provide access to the internal RLock that we need for
+                # implementing atomic -=, so we need to carry around a separate RLock object.
+                remaining_clusters_lock = manager.RLock()
+
+                try:
+
+                    self.pool = multiprocessing.Pool(self.threads)
+                    cluster_list = self.pool.starmap(_run_cluster, zip(cluster_list, itertools.repeat(self.verbose), itertools.repeat(self.clean), itertools.repeat(self.fails_dir),
+                                                                       itertools.repeat(remaining_clusters),itertools.repeat(remaining_clusters_lock)))
+                    # harvest the pool as soon as we no longer need it
+                    self.pool.close()
+                    self.pool.join()
+
+                finally:
+
+                    remaining_clusters = None
+                    remaining_clusters_lock = None
+                    manager.shutdown()
+
             else:
                 for c in cluster_list:
-                    _run_cluster(c, self.verbose, self.clean, self.fails_dir, remaining_clusters, remaining_clusters_lock)
+                    _run_cluster(c, self.verbose, self.clean, self.fails_dir, remaining_clusters=None, remaining_clusters_lock=None)
         except:
             self.clusters_all_ran_ok = False
 
         if self.verbose:
             print('Final value of remaining_clusters counter:', remaining_clusters)
-        remaining_clusters = None
-        remaining_clusters_lock = None
-        manager.shutdown()
 
         if len(os.listdir(self.fails_dir)) > 0:
             self.clusters_all_ran_ok = False

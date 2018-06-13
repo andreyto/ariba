@@ -26,6 +26,7 @@ class Cluster:
       reference_names=None,
       logfile=None,
       assembly_coverage=50,
+      assembly_coverage_min=0,
       assembly_kmer=21,
       assembler='fermilite',
       max_insert=1000,
@@ -69,6 +70,7 @@ class Cluster:
         self.total_reads_bases = total_reads_bases
         self.logfile = logfile
         self.assembly_coverage = assembly_coverage
+        self.assembly_coverage_min = assembly_coverage_min
         self.assembly_kmer = assembly_kmer
         self.assembler = assembler
         self.sspace_k = sspace_k
@@ -258,7 +260,8 @@ class Cluster:
         wanted_bases = coverage * ref_length
         wanted_reads = int(math.ceil(wanted_bases / mean_read_length))
         wanted_reads += wanted_reads % 2
-        return wanted_reads
+        coverage_avail = total_bases / ref_length
+        return wanted_reads, coverage_avail
 
 
     @staticmethod
@@ -340,39 +343,43 @@ class Cluster:
             print('No reads left after filtering with cdhit', file=self.log_fh, flush=True)
             self.assembled_ok = False
         else:
-            wanted_reads = self._number_of_reads_for_assembly(self.longest_ref_length, self.reads_insert, self.total_reads_bases, self.total_reads, self.assembly_coverage)
-            made_reads = self._make_reads_for_assembly(wanted_reads, self.total_reads, self.all_reads1, self.all_reads2, self.reads_for_assembly1, self.reads_for_assembly2, random_seed=self.random_seed)
-            print('\nUsing', made_reads, 'from a total of', self.total_reads, 'for assembly.', file=self.log_fh, flush=True)
-            print('Assembling reads:', file=self.log_fh, flush=True)
+            wanted_reads, coverage_avail = self._number_of_reads_for_assembly(self.longest_ref_length, self.reads_insert, self.total_reads_bases, self.total_reads, self.assembly_coverage)
+            if coverage_avail < self.assembly_coverage_min:
+                print('Estimated coverage is less than requested', file=self.log_fh, flush=True)
+                self.assembled_ok = False
+            else:
+                made_reads = self._make_reads_for_assembly(wanted_reads, self.total_reads, self.all_reads1, self.all_reads2, self.reads_for_assembly1, self.reads_for_assembly2, random_seed=self.random_seed)
+                print('\nUsing', made_reads, 'from a total of', self.total_reads, 'for assembly.', file=self.log_fh, flush=True)
+                print('Assembling reads:', file=self.log_fh, flush=True)
 
-            self._update_threads()
-            self.assembly = assembly.Assembly(
-              self.reads_for_assembly1,
-              self.reads_for_assembly2,
-              self.reference_fa,
-              self.references_fa,
-              self.assembly_dir,
-              self.final_assembly_fa,
-              self.final_assembly_bam,
-              self.log_fh,
-              self.all_refs_fasta,
-              contig_name_prefix=self.name,
-              assembler=self.assembler,
-              extern_progs=self.extern_progs,
-              clean=self.clean,
-              spades_mode=self.spades_mode,
-              spades_options=self.spades_options,
-              plugin_asm_options=self.plugin_asm_option,
-              threads=self.threads
-            )
+                self._update_threads()
+                self.assembly = assembly.Assembly(
+                  self.reads_for_assembly1,
+                  self.reads_for_assembly2,
+                  self.reference_fa,
+                  self.references_fa,
+                  self.assembly_dir,
+                  self.final_assembly_fa,
+                  self.final_assembly_bam,
+                  self.log_fh,
+                  self.all_refs_fasta,
+                  contig_name_prefix=self.name,
+                  assembler=self.assembler,
+                  extern_progs=self.extern_progs,
+                  clean=self.clean,
+                  spades_mode=self.spades_mode,
+                  spades_options=self.spades_options,
+                  plugin_asm_options=self.plugin_asm_option,
+                  threads=self.threads
+                )
 
-            self.assembly.run()
-            self.assembled_ok = self.assembly.assembled_ok
-            self._clean_file(self.reads_for_assembly1)
-            self._clean_file(self.reads_for_assembly2)
-            if self.clean:
-                print('Deleting Assembly directory', self.assembly_dir, file=self.log_fh, flush=True)
-                shutil.rmtree(self.assembly_dir,ignore_errors=True)
+                self.assembly.run()
+                self.assembled_ok = self.assembly.assembled_ok
+                self._clean_file(self.reads_for_assembly1)
+                self._clean_file(self.reads_for_assembly2)
+                if self.clean:
+                    print('Deleting Assembly directory', self.assembly_dir, file=self.log_fh, flush=True)
+                    shutil.rmtree(self.assembly_dir,ignore_errors=True)
 
 
         if self.assembled_ok and self.assembly.ref_seq_name is not None:
