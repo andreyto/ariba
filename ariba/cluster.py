@@ -174,7 +174,7 @@ class Cluster:
             self.log_fh = None
 
     def _receive_signal(self, signum, stack):
-        print('Signal', signum, 'received in cluster', self.name + '... Stopping!', file=sys.stderr, flush=True)
+        print('WARNING: Signal', signum, 'received in cluster', self.name + '... Stopping!', file=sys.stderr, flush=True)
         if self.log_fh is not None:
             pyfastaq.utils.close(self.log_fh)
             self.log_fh = None
@@ -319,7 +319,7 @@ class Cluster:
                 self._run()
             except Error as err:
                 os.chdir(original_dir)
-                print('Error running cluster! Error was:', err, sep='\n', file=self.log_fh)
+                print('ERROR: Error running cluster! Error was:', err, sep='\n', file=self.log_fh)
                 pyfastaq.utils.close(self.log_fh)
                 self.log_fh = None
                 raise Error('Error running cluster ' + self.name + '!')
@@ -340,12 +340,12 @@ class Cluster:
         print('{:_^79}'.format(' LOG FILE START ' + self.name + ' '), file=self.log_fh, flush=True)
 
         if self.total_reads == 0:
-            print('No reads left after filtering with cdhit', file=self.log_fh, flush=True)
+            print('WARNING: No reads left after filtering with cdhit', file=self.log_fh, flush=True)
             self.assembled_ok = False
         else:
             wanted_reads, coverage_avail = self._number_of_reads_for_assembly(self.longest_ref_length, self.reads_insert, self.total_reads_bases, self.total_reads, self.assembly_coverage)
             if coverage_avail < self.assembly_coverage_min:
-                print('Estimated coverage is less than requested', file=self.log_fh, flush=True)
+                print('WARNING: Estimated coverage is less than requested', file=self.log_fh, flush=True)
                 self.assembled_ok = False
             else:
                 made_reads = self._make_reads_for_assembly(wanted_reads, self.total_reads, self.all_reads1, self.all_reads2, self.reads_for_assembly1, self.reads_for_assembly2, random_seed=self.random_seed)
@@ -463,10 +463,10 @@ class Cluster:
             if len(self.variants_from_samtools):
                 self.status_flag.add('variants_suggest_collapsed_repeat')
         elif not self.assembled_ok:
-            print('\nAssembly failed\n', file=self.log_fh, flush=True)
+            print('\nWARNING: Assembly failed\n', file=self.log_fh, flush=True)
             self.status_flag.add('assembly_fail')
         elif self.assembly.ref_seq_name is None:
-            print('\nCould not get closest reference sequence\n', file=self.log_fh, flush=True)
+            print('\nWARNING: Could not get closest reference sequence\n', file=self.log_fh, flush=True)
             self.status_flag.add('ref_seq_choose_fail')
 
         try:
