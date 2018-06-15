@@ -6,6 +6,7 @@ import tempfile
 import pickle
 import itertools
 import sys
+import traceback
 import shutil
 import csv
 import multiprocessing
@@ -31,7 +32,7 @@ def _run_cluster(obj, verbose, clean, fails_dir, remaining_clusters, remaining_c
     try:
         obj.run(remaining_clusters=remaining_clusters,remaining_clusters_lock=remaining_clusters_lock)
     except:
-        print('Failed cluster:', obj.name, file=sys.stderr)
+        print('Failed cluster:', obj.name, 'with exception: ', traceback.format_exc(), file=sys.stderr)
         with open(os.path.join(fails_dir, obj.name), 'w'):
             pass
 
@@ -584,13 +585,15 @@ class Clusters:
             except:
                 continue
             ref_name = self.clusters[gene].assembly_compare.ref_sequence.id
+            seq_id_to_hit_id = self.clusters[gene].assembly_compare.assembled_reference_sequences_to_nucmer_hit_ids
             for seq_name in sorted(seq_dict):
                 seq = seq_dict[seq_name]
                 print(seq, file=f)
                 outseqmap.writerow(dict(seq_id=seq.id,
                     ref_name=ref_name,
                     seq_type="match",
-                    cluster=gene))
+                    cluster=gene,
+                    hit_id=seq_id_to_hit_id[seq.id]))
 
         pyfastaq.utils.close(f)
 
@@ -608,10 +611,13 @@ class Clusters:
                 ])
                 print(seq, file=f)
                 ref_name = self.clusters[gene].assembly_compare.ref_sequence.id
+                ## if assembly_compare.gene_matching_ref is defined, then nucmer_hit_id shall be defined
+                nucmer_hit_id = self.clusters[gene].assembly_compare.gene_nucmer_hit_id
                 outseqmap.writerow(dict(seq_id=seq.id,
                     ref_name=ref_name,
                     seq_type="gene",
-                    cluster=gene))
+                    cluster=gene,
+                    hit_id=nucmer_hit_id))
 
         pyfastaq.utils.close(f)
 
@@ -712,7 +718,7 @@ class Clusters:
                 print(self.catted_assembled_seqs_fasta, 'and', self.catted_genes_matching_refs_fasta, flush=True)
             
             with open(self.seqmap,"w",newline="") as outsmfile:
-                outseqmap = csv.DictWriter(outsmfile, fieldnames=["ref_name","cluster","seq_type","seq_id"], dialect='excel-tab')
+                outseqmap = csv.DictWriter(outsmfile, fieldnames=["ref_name", "cluster", "seq_type", "seq_id", "hit_id"], dialect='excel-tab')
                 outseqmap.writeheader()
                 self._write_catted_assembled_seqs_fasta(self.catted_assembled_seqs_fasta, outseqmap)
                 self._write_catted_genes_matching_refs_fasta(self.catted_genes_matching_refs_fasta, outseqmap)

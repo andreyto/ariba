@@ -1,5 +1,6 @@
 import os
 import copy
+import itertools
 import pyfastaq
 import pymummer
 
@@ -72,6 +73,11 @@ class AssemblyCompare:
             nucmer_hits[contig].append(copy.copy(hit))
 
         return nucmer_hits
+
+    @staticmethod
+    def _make_nucmer_hit_ids(nucmer_hits):
+        '''Build a dictionary(nucmer_hit => hit_iid) to be used for recording relation between match and gene sequences'''
+        return dict((hit, i_hit) for (i_hit, hit) in enumerate(itertools.chain.from_iterable(nucmer_hits.values())))
 
 
     @staticmethod
@@ -178,13 +184,14 @@ class AssemblyCompare:
 
 
     @staticmethod
-    def _get_assembled_reference_sequences(nucmer_hits, ref_sequence, assembly):
+    def _get_assembled_reference_sequences(nucmer_hits, ref_sequence, assembly, nucmer_hit_ids):
         '''nucmer_hits =  hits made by self._parse_nucmer_coords_file.
            ref_gene = reference sequence (pyfastaq.sequences.Fasta object)
            assembly = dictionary of contig name -> contig.
            Makes a set of Fasta objects of each piece of assembly that
            corresponds to the reference sequeunce.'''
         sequences = {}
+        seqid_to_hit_id = {}
 
         for contig in sorted(nucmer_hits):
             for hit in nucmer_hits[contig]:
@@ -210,8 +217,9 @@ class AssemblyCompare:
                     fa.id += '.complete'
 
                 sequences[fa.id] = fa
+                seqid_to_hit_id[fa.id] = nucmer_hit_ids[hit]
 
-        return sequences
+        return sequences, seqid_to_hit_id
 
 
     @staticmethod
@@ -340,12 +348,12 @@ class AssemblyCompare:
 
 
     @staticmethod
-    def _get_gene_matching_ref(nucmer_hits, contigs, max_end_nt_extend):
+    def _get_gene_matching_ref(nucmer_hits, contigs, max_end_nt_extend, nucmer_hit_ids):
         longest_match = AssemblyCompare._longest_nucmer_hit_in_ref(nucmer_hits)
         if longest_match is None:
-            return None, 'NO_MATCH', None, None
+            return None, None, 'NO_MATCH', None, None
         else:
-            return (longest_match.qry_name,) + AssemblyCompare._gene_from_nucmer_match(longest_match, contigs[longest_match.qry_name], max_end_nt_extend)
+            return (nucmer_hit_ids[longest_match],longest_match.qry_name,) + AssemblyCompare._gene_from_nucmer_match(longest_match, contigs[longest_match.qry_name], max_end_nt_extend)
 
 
     @staticmethod
@@ -396,12 +404,15 @@ class AssemblyCompare:
     def run(self):
         self._run_nucmer()
         self.nucmer_hits = self._parse_nucmer_coords_file(self.nucmer_coords_file, self.ref_sequence.id)
+        self.nucmer_hit_ids = self._make_nucmer_hit_ids(self.nucmer_hits)
         self.percent_identities = self._nucmer_hits_to_percent_identity(self.nucmer_hits)
-        self.assembled_reference_sequences = self._get_assembled_reference_sequences(self.nucmer_hits, self.ref_sequence, self.assembly_sequences)
+        self.assembled_reference_sequences, self.assembled_reference_sequences_to_nucmer_hit_ids = \
+            self._get_assembled_reference_sequences(self.nucmer_hits, self.ref_sequence, self.assembly_sequences, self.nucmer_hit_ids)
         ref_seq_type, is_variant_only = self.refdata.sequence_type(self.ref_sequence.id)
         if self._ref_covered_by_at_least_one_full_length_contig(self.nucmer_hits, self.assembled_threshold, self.max_gene_nt_extend):
             self.assembled_into_one_contig = True
             if ref_seq_type == 'p':
-                self.scaff_name_matching_ref, self.gene_matching_ref, self.gene_matching_ref_type, self.gene_start_bases_added, self.gene_end_bases_added = self._get_gene_matching_ref(self.nucmer_hits, self.assembly_sequences, self.max_gene_nt_extend)
+                self.gene_nucmer_hit_id, self.scaff_name_matching_ref, self.gene_matching_ref, self.gene_matching_ref_type, self.gene_start_bases_added, self.gene_end_bases_added = \
+                    self._get_gene_matching_ref(self.nucmer_hits, self.assembly_sequences, self.max_gene_nt_extend, self.nucmer_hit_ids)
         else:
             self.assembled_into_one_contig = False
