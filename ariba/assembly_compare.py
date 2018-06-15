@@ -319,8 +319,12 @@ class AssemblyCompare:
         max_allowed_end = min(len(contig) - 1, contig_hit_end + max_end_nt_extend)
         contig_hit_end -= (contig_hit_end - contig_hit_start + 1) % 3
         assert contig_hit_start < contig_hit_end
-        gene_nt_name = nucmer_match.qry_name + '.' + str(contig_hit_start + 1) + '-' + str(contig_hit_end + 1)
 
+        if revcomp:
+            gene_nt_name = nucmer_match.qry_name + '.' + str(contig_hit_end + 1) + '-' + str(contig_hit_start + 1)
+        else:
+            gene_nt_name = nucmer_match.qry_name + '.' + str(contig_hit_start + 1) + '-' + str(contig_hit_end + 1)
+        
         gene_nt = pyfastaq.sequences.Fasta(gene_nt_name, contig[contig_hit_start:contig_hit_end+1])
         assert len(gene_nt) % 3 == 0
         gene_aa = gene_nt.translate()
