@@ -654,6 +654,17 @@ class Clusters:
             reporter = mlst_reporter.MlstReporter(ariba_report_tsv, mlst_profile_file, outprefix)
             reporter.run()
 
+    @classmethod
+    def _transfer_warnings_from_cluster_logs(cls,log_files,out):
+        for log_file in log_files:
+            with open(log_file,'r') as inp:
+                for line in inp:
+                    for msg_tag in ('WARNING:','ERROR:'):
+                        if line.startswith(msg_tag):
+                            msg = line.split(msg_tag,1)[1].strip()
+                            print("{} In cluster log {}: {}".\
+                                format(msg_tag,os.path.basename(log_file),msg),
+                                file=out)
 
     def write_versions_file(self, original_dir):
         with open('version_info.txt', 'w') as f:
@@ -731,6 +742,9 @@ class Clusters:
                     print('{:_^79}'.format(' Catting cluster log files '), flush=True)
                     print('Writing file', clusters_log_file, flush=True)
                 common.cat_files(self.log_files, clusters_log_file)
+                if self.verbose:
+                    print('Transferring any error and warning messages from cluster log files', flush=True)
+                self._transfer_warnings_from_cluster_logs(self.log_files,sys.stderr)
 
             if self.verbose:
                 print()
